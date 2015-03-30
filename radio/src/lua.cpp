@@ -47,6 +47,11 @@ extern "C" {
   #include <lauxlib.h>
   #include <lualib.h>
   #include <lrotable.h>
+#if defined(SIMU)
+  // these 2 are for the script compiler only
+  #include <lundump.h>
+  #include <lstate.h>
+#endif
 #if !defined(SIMU)
 }
 #endif
@@ -1587,6 +1592,34 @@ void luaFree(ScriptInternalData & sid)
   UNPROTECT_LUA();
 }
 
+#ifdef SIMU
+static int luaDumpWriter(lua_State* L, const void* p, size_t size, void* u)
+{
+  UNUSED(L);
+  UINT written;
+  FRESULT result = f_write((FIL *)u, p, size, &written);
+  return (result != FR_OK && !written);
+}
+
+// dump compiled bytecode to a file named <filename>.luac
+// stripDebug: 1 = remove debug info from bytecode (smaller but errors are less informative); 0 = keep debug info
+void luaCompileScript(lua_State* L, const char *filename, int stripDebug)
+{
+  FIL D;
+  char luaCfile[256];
+  strncpy(luaCfile, filename, sizeof(luaCfile) - 1);
+  strcat(luaCfile, "c");
+  TRACE("Dumping bytecode to file %s", luaCfile);
+  if (f_open(&D, luaCfile, FA_WRITE | FA_CREATE_ALWAYS) == FR_OK) {
+    lua_lock(L);
+    luaU_dump(L, getproto(L->top - 1), luaDumpWriter, &D, stripDebug);
+    lua_unlock(L);
+    if (f_close(&D) != FR_OK) TRACE("Error closing bytecode output file %s", luaCfile);
+  } else
+    TRACE("Could not open bytecode output file %s", luaCfile);
+}
+#endif
+
 int luaLoad(const char *filename, ScriptInternalData & sid, ScriptInputsOutputs * sio=NULL)
 {
   int init = 0;
@@ -1600,52 +1633,61 @@ int luaLoad(const char *filename, ScriptInternalData & sid, ScriptInputsOutputs 
 #endif
 
   if (luaState == INTERPRETER_PANIC) {
-	return SCRIPT_PANIC;
+    return SCRIPT_PANIC;
   }
 
   SET_LUA_INSTRUCTIONS_COUNT(MANUAL_SCRIPTS_MAX_INSTRUCTIONS);
 
   PROTECT_LUA() {
-    if (luaL_loadfile(L, filename) == 0 &&
-        lua_pcall(L, 0, 1, 0) == 0 &&
-        lua_istable(L, -1)) {
+    if (luaL_loadfile(L, filename) == 0) {
 
-      luaL_checktype(L, -1, LUA_TTABLE);
+#ifdef SIMU
+      luaCompileScript(L, filename, 1);
+#endif
 
-      for (lua_pushnil(L); lua_next(L, -2); lua_pop(L, 1)) {
-        const char *key = lua_tostring(L, -2);
-        if (!strcmp(key, "init")) {
-          init = luaL_ref(L, LUA_REGISTRYINDEX);
-          lua_pushnil(L);
+      if (lua_pcall(L, 0, 1, 0) == 0 && lua_istable(L, -1)) {
+
+        luaL_checktype(L, -1, LUA_TTABLE);
+
+        for (lua_pushnil(L); lua_next(L, -2); lua_pop(L, 1)) {
+          const char *key = lua_tostring(L, -2);
+          if (!strcmp(key, "init")) {
+            init = luaL_ref(L, LUA_REGISTRYINDEX);
+            lua_pushnil(L);
+          }
+          else if (!strcmp(key, "run")) {
+            sid.run = luaL_ref(L, LUA_REGISTRYINDEX);
+            lua_pushnil(L);
+          }
+          else if (!strcmp(key, "background")) {
+            sid.background = luaL_ref(L, LUA_REGISTRYINDEX);
+            lua_pushnil(L);
+          }
+          else if (sio && !strcmp(key, "input")) {
+            luaGetInputs(*sio);
+          }
+          else if (sio && !strcmp(key, "output")) {
+            luaGetOutputs(*sio);
+          }
         }
-        else if (!strcmp(key, "run")) {
-          sid.run = luaL_ref(L, LUA_REGISTRYINDEX);
-          lua_pushnil(L);
-        }
-        else if (!strcmp(key, "background")) {
-          sid.background = luaL_ref(L, LUA_REGISTRYINDEX);
-          lua_pushnil(L);
-        }
-        else if (sio && !strcmp(key, "input")) {
-          luaGetInputs(*sio);
-        }
-        else if (sio && !strcmp(key, "output")) {
-          luaGetOutputs(*sio);
+
+        if (init) {
+          lua_rawgeti(L, LUA_REGISTRYINDEX, init);
+          if (lua_pcall(L, 0, 0, 0) != 0) {
+            TRACE("Error in script %s init: %s", filename, lua_tostring(L, -1));
+            sid.state = SCRIPT_SYNTAX_ERROR;
+          }
+          luaL_unref(L, LUA_REGISTRYINDEX, init);
+          lua_gc(L, LUA_GCCOLLECT, 0);
         }
       }
-
-      if (init) {
-        lua_rawgeti(L, LUA_REGISTRYINDEX, init);
-        if (lua_pcall(L, 0, 0, 0) != 0) {
-          TRACE("Error in script %s init: %s", filename, lua_tostring(L, -1));
-          sid.state = SCRIPT_SYNTAX_ERROR;
-        }
-        luaL_unref(L, LUA_REGISTRYINDEX, init);
-        lua_gc(L, LUA_GCCOLLECT, 0);
+      else {
+        TRACE("Error parsing script %s: %s", filename, lua_tostring(L, -1));
+        sid.state = SCRIPT_SYNTAX_ERROR;
       }
     }
     else {
-      TRACE("Error in script %s: %s", filename, lua_tostring(L, -1));
+      TRACE("Error loading script %s: %s", filename, lua_tostring(L, -1));
       sid.state = SCRIPT_SYNTAX_ERROR;
     }
   }
