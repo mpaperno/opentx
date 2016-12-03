@@ -62,6 +62,7 @@
 #define SOUNDS_EXT          ".wav"
 #define BITMAPS_EXT         ".bmp"
 #define SCRIPTS_EXT         ".lua"
+#define SCRIPTS_BIN_EXT     ".luac"
 #define TEXT_EXT            ".txt"
 #define FIRMWARE_EXT        ".bin"
 #define EEPROM_EXT          ".bin"

@@ -39,10 +39,14 @@
 #include "opentx.h"
 #include "bin_allocator.h"
 #include "lua/lua_api.h"
- 
-#if defined(LUA_COMPILER) && defined(SIMU)
+
+#if !defined(SIMU)
+extern "C" {
+#endif
   #include <lundump.h>
   #include <lstate.h>
+#if !defined(SIMU)
+}
 #endif
 
 #define PERMANENT_SCRIPTS_MAX_INSTRUCTIONS (10000/100)
@@ -214,6 +218,28 @@ void luaInit()
   }
 }
 
+void luaDoGc()
+{
+  if (L) {
+    PROTECT_LUA() {
+      lua_gc(L, LUA_GCCOLLECT, 0);
+#if defined(SIMU) || defined(DEBUG)
+      static int lastgc = 0;
+      int gc = luaGetMemUsed();
+      if (gc != lastgc) {
+        lastgc = gc;
+        TRACE("GC Use: %dbytes", gc);
+      }
+#endif
+    }
+    else {
+      // we disable Lua for the rest of the session
+      luaDisable();
+    }
+    UNPROTECT_LUA();
+  }
+}
+
 void luaFree(ScriptInternalData & sid)
 {
   PROTECT_LUA() {
@@ -225,15 +251,15 @@ void luaFree(ScriptInternalData & sid)
       luaL_unref(L, LUA_REGISTRYINDEX, sid.background);
       sid.background = 0;
     }
-    lua_gc(L, LUA_GCCOLLECT, 0);
   }
   else {
     luaDisable();
   }
   UNPROTECT_LUA();
+
+  luaDoGc();
 }
 
-#if defined(LUA_COMPILER) && defined(SIMU)
 static int luaDumpWriter(lua_State* L, const void* p, size_t size, void* u)
 {
   UNUSED(L);
@@ -242,34 +268,24 @@ static int luaDumpWriter(lua_State* L, const void* p, size_t size, void* u)
   return (result != FR_OK && !written);
 }
 
-static void luaCompileAndSave(const char *bytecodeName)
+// dump compiled bytecode to a file named <filename>
+// sets timestamp of created file to match the one passed in <finfo>, if any
+// stripDebug: 1 = remove debug info from bytecode (smaller but errors are less informative); 0 = keep debug info
+void luaDumpState(lua_State* L, const char *filename, FILINFO *finfo, int stripDebug)
 {
   FIL D;
-  char srcName[1024];
-  strcpy(srcName, bytecodeName);
-  strcat(srcName, ".src");
-
-  if (f_stat(srcName, 0) != FR_OK) {
-    return;   // no source to compile
-  }
-
-  if (f_open(&D, bytecodeName, FA_WRITE | FA_CREATE_ALWAYS) != FR_OK) {
-    TRACE("Could not open Lua bytecode output file %s", bytecodeName);
-    return;
-  }
-
-  PROTECT_LUA() {
-    if (luaL_loadfile(L, srcName) == 0) {
-      lua_lock(L);
-      luaU_dump(L, getproto(L->top - 1), luaDumpWriter, &D, 1);
-      lua_unlock(L);
-      TRACE("Saved Lua bytecode to file %s", bytecodeName);
+  if (f_open(&D, filename, FA_WRITE | FA_CREATE_ALWAYS) == FR_OK) {
+    lua_lock(L);
+    luaU_dump(L, getproto(L->top - 1), luaDumpWriter, &D, stripDebug);
+    lua_unlock(L);
+    if (f_close(&D) == FR_OK) {
+      if (finfo != NULL)
+        f_utime(filename, finfo);  // set the file mod time
+      TRACE("luaDumpState(): Compiled Lua script to file %s", filename);
     }
-  }
-  UNPROTECT_LUA();
-  f_close(&D);
+  } else
+    TRACE("luaDumpState(): Could not open output file %s", filename);
 }
-#endif
 
 int luaLoad(const char *filename, ScriptInternalData & sid, ScriptInputsOutputs * sio=NULL)
 {
@@ -287,53 +303,126 @@ int luaLoad(const char *filename, ScriptInternalData & sid, ScriptInputsOutputs 
     return SCRIPT_PANIC;
   }
 
-#if defined(LUA_COMPILER) && defined(SIMU)
-  luaCompileAndSave(filename);
+#if defined(LUA_COMPILER)
+
+  uint8_t fnamelen;
+  char filenameFull[_MAX_LFN + 1];
+  bool scriptNeedsCompile = false;
+  FILINFO fnoLuaS, fnoLuaC;
+  FRESULT frLuaS, frLuaC;
+
+  memset(&fnoLuaS, 0, sizeof(FILINFO));
+  memset(&fnoLuaC, 0, sizeof(FILINFO));
+
+  // check if file extension is already in the file name and strip it
+  fnamelen = strlen(filename);
+  if (!strcasecmp(filename + fnamelen - strlen(SCRIPTS_BIN_EXT), SCRIPTS_BIN_EXT)) {
+    fnamelen -= strlen(SCRIPTS_BIN_EXT);
+  }
+  else if (!strcasecmp(filename + fnamelen - strlen(SCRIPTS_EXT), SCRIPTS_EXT)) {
+    fnamelen -= strlen(SCRIPTS_EXT);
+  }
+  fnamelen = min<uint8_t>(fnamelen, sizeof(filenameFull) - sizeof(SCRIPTS_BIN_EXT));
+  strncpy(filenameFull, filename, fnamelen);
+  filenameFull[fnamelen] = '\0';
+
+  // check if compiled version exists
+  strcpy(filenameFull + fnamelen, SCRIPTS_BIN_EXT);
+  frLuaC = f_stat(filenameFull, &fnoLuaC);
+
+  // check if plain-text version exists
+  strcpy(filenameFull + fnamelen, SCRIPTS_EXT);
+  frLuaS = f_stat(filenameFull, &fnoLuaS);
+
+  if (frLuaS != FR_OK && frLuaC != FR_OK) {
+    // no script found at all
+    TRACE("Error: Lua script file not found: %s", filename);
+    sid.state = SCRIPT_NOFILE;
+    return sid.state;
+  }
+  else if (frLuaC != FR_OK) {
+    // compiled version is missing
+    scriptNeedsCompile = true;
+  }
+  else if (frLuaS == FR_OK && (uint32_t)((fnoLuaC.fdate << 16) + fnoLuaC.ftime) < (uint32_t)((fnoLuaS.fdate << 16) + fnoLuaS.ftime)) {
+    // plain-text version exists and is newer
+    scriptNeedsCompile = true;
+  }
+#if defined(SIMU) || defined(DEBUG)
+  // always load source .lua file if it exists so that full debug info is available
+  else if (frLuaS != FR_OK) {
+#else
+  else {
 #endif
+    // compiled version is up-to-date or only one that exists, use it
+    strcpy(filenameFull + fnamelen, SCRIPTS_BIN_EXT);
+  }
+//  TRACE("luaLoad(%s): %s: %s %uT%u %lu %s: %s %uT%u %lu", filename,
+//      SCRIPTS_BIN_EXT, (frLuaC == FR_OK ? "ok" : "nf"), fnoLuaC.fdate, fnoLuaC.ftime, (uint32_t)((fnoLuaC.fdate << 16) + fnoLuaC.ftime),
+//      SCRIPTS_EXT,     (frLuaS == FR_OK ? "ok" : "nf"), fnoLuaS.fdate, fnoLuaS.ftime, (uint32_t)((fnoLuaS.fdate << 16) + fnoLuaS.ftime));
+
+#else  // !defined(LUA_COMPILER)
+
+  // use passed file name as-is
+  const char *filenameFull = filename;
+
+#endif
+
+  TRACE("luaLoad(%s) = loading %s", filename, filenameFull);
 
   SET_LUA_INSTRUCTIONS_COUNT(MANUAL_SCRIPTS_MAX_INSTRUCTIONS);
 
   PROTECT_LUA() {
-    if (luaL_loadfile(L, filename) == 0 &&
-        lua_pcall(L, 0, 1, 0) == 0 &&
-        lua_istable(L, -1)) {
+    if (luaL_loadfile(L, filenameFull) == LUA_OK) {
 
-      luaL_checktype(L, -1, LUA_TTABLE);
+#if defined(LUA_COMPILER)
+      if (scriptNeedsCompile) {
+        strcpy(filenameFull + fnamelen, SCRIPTS_BIN_EXT);
+        luaDumpState(L, filenameFull, &fnoLuaS, 1);
+      }
+#endif
 
-      for (lua_pushnil(L); lua_next(L, -2); lua_pop(L, 1)) {
-        const char *key = lua_tostring(L, -2);
-        if (!strcmp(key, "init")) {
-          init = luaL_ref(L, LUA_REGISTRYINDEX);
-          lua_pushnil(L);
+      if (lua_pcall(L, 0, 1, 0) == LUA_OK && lua_istable(L, -1)) {
+
+        for (lua_pushnil(L); lua_next(L, -2); lua_pop(L, 1)) {
+          const char *key = lua_tostring(L, -2);
+          if (!strcmp(key, "init")) {
+            init = luaL_ref(L, LUA_REGISTRYINDEX);
+            lua_pushnil(L);
+          }
+          else if (!strcmp(key, "run")) {
+            sid.run = luaL_ref(L, LUA_REGISTRYINDEX);
+            lua_pushnil(L);
+          }
+          else if (!strcmp(key, "background")) {
+            sid.background = luaL_ref(L, LUA_REGISTRYINDEX);
+            lua_pushnil(L);
+          }
+          else if (sio && !strcmp(key, "input")) {
+            luaGetInputs(*sio);
+          }
+          else if (sio && !strcmp(key, "output")) {
+            luaGetOutputs(*sio);
+          }
         }
-        else if (!strcmp(key, "run")) {
-          sid.run = luaL_ref(L, LUA_REGISTRYINDEX);
-          lua_pushnil(L);
-        }
-        else if (!strcmp(key, "background")) {
-          sid.background = luaL_ref(L, LUA_REGISTRYINDEX);
-          lua_pushnil(L);
-        }
-        else if (sio && !strcmp(key, "input")) {
-          luaGetInputs(*sio);
-        }
-        else if (sio && !strcmp(key, "output")) {
-          luaGetOutputs(*sio);
+
+        if (init) {
+          lua_rawgeti(L, LUA_REGISTRYINDEX, init);
+          if (lua_pcall(L, 0, 0, 0) != 0) {
+            TRACE("Error in script %s init: %s", filename, lua_tostring(L, -1));
+            sid.state = SCRIPT_SYNTAX_ERROR;
+          }
+          luaL_unref(L, LUA_REGISTRYINDEX, init);
+          lua_gc(L, LUA_GCCOLLECT, 0);
         }
       }
-
-      if (init) {
-        lua_rawgeti(L, LUA_REGISTRYINDEX, init);
-        if (lua_pcall(L, 0, 0, 0) != 0) {
-          TRACE("Error in script %s init: %s", filename, lua_tostring(L, -1));
-          sid.state = SCRIPT_SYNTAX_ERROR;
-        }
-        luaL_unref(L, LUA_REGISTRYINDEX, init);
-        lua_gc(L, LUA_GCCOLLECT, 0);
+      else {
+        TRACE("Error parsing script %s: %s", filename, lua_tostring(L, -1));
+        sid.state = SCRIPT_SYNTAX_ERROR;
       }
     }
     else {
-      TRACE("Error in script %s: %s", filename, lua_tostring(L, -1));
+      TRACE("Error loading script %s: %s", filename, lua_tostring(L, -1));
       sid.state = SCRIPT_SYNTAX_ERROR;
     }
   }
@@ -346,6 +435,8 @@ int luaLoad(const char *filename, ScriptInternalData & sid, ScriptInputsOutputs 
   if (sid.state != SCRIPT_OK) {
     luaFree(sid);
   }
+
+  luaDoGc();
 
   return sid.state;
 }
@@ -704,28 +795,6 @@ bool luaDoOneRunPermanentScript(uint8_t evt, int i, uint32_t scriptType)
     }
   }
   return true;
-}
-
-void luaDoGc()
-{
-  if (L) {
-    PROTECT_LUA() {
-      lua_gc(L, LUA_GCCOLLECT, 0);
-#if defined(SIMU) || defined(DEBUG)
-      static int lastgc = 0;
-      int gc = luaGetMemUsed();
-      if (gc != lastgc) {
-        lastgc = gc;
-        TRACE("GC Use: %dbytes", gc);
-      }
-#endif
-    }
-    else {
-      // we disable Lua for the rest of the session
-      luaDisable();
-    }
-    UNPROTECT_LUA();
-  }
 }
 
 bool luaTask(uint8_t evt, uint8_t scriptType, bool allowLcdUsage)
