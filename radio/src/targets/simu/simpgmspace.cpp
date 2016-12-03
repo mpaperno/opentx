@@ -676,6 +676,7 @@ static void EeFsDump(){
 #if defined(SDCARD) && !defined(SKIP_FATFS_DECLARATION) && !defined(SIMU_DISKIO)
 namespace simu {
 #include <dirent.h>
+#include <sys/utime.h>
 #if !defined WIN32
   #include <libgen.h>
 #endif
@@ -786,7 +787,7 @@ char *findTrueFileName(const char *path)
   return result;
 }
 
-FRESULT f_stat (const TCHAR * name, FILINFO *)
+FRESULT f_stat (const TCHAR * name, FILINFO * fno)
 {
   char *path = convertSimuPath(name);
   char * realPath = findTrueFileName(path);
@@ -796,6 +797,13 @@ FRESULT f_stat (const TCHAR * name, FILINFO *)
     return FR_INVALID_NAME;
   }
   else {
+    if (fno != NULL) {
+      // convert to FatFs fdate/ftime
+      struct tm *ltime = localtime(&tmp.st_mtime);
+      fno->fdate = ((ltime->tm_year - 80) << 9) | ((ltime->tm_mon + 1) << 5) | ltime->tm_mday;
+      fno->ftime = (ltime->tm_hour << 11) | (ltime->tm_min << 5) | (ltime->tm_sec / 2);
+      fno->fsize = (DWORD)tmp.st_size;
+    }
     TRACE("f_stat(%s) = OK", path);
     return FR_OK;
   }
@@ -966,6 +974,38 @@ FRESULT f_rename(const TCHAR *oldname, const TCHAR *newname)
   return FR_OK;
 }
 
+FRESULT f_utime ( const TCHAR* path, const FILINFO* fno)
+{
+  if (fno == NULL)
+    return FR_INVALID_PARAMETER;
+
+  char *simpath = convertSimuPath(path);
+  char *realPath = findTrueFileName(simpath);
+  struct simu::utimbuf newTimes;
+  struct tm ltime;
+
+  // convert from FatFs fdate/ftime
+  ltime.tm_year = ((fno->fdate >> 9) & 0x7F) + 80;
+  ltime.tm_mon = ((fno->fdate >> 5) & 0xF) - 1;
+  ltime.tm_mday = (fno->fdate & 0x1F);
+  ltime.tm_hour = ((fno->ftime >> 11) & 0x1F);
+  ltime.tm_min = ((fno->ftime >> 5) & 0x3F);
+  ltime.tm_sec = (fno->ftime & 0x1F) * 2;
+  ltime.tm_isdst = -1;  // force mktime() to check dst
+
+  newTimes.modtime = mktime(&ltime);
+  newTimes.actime = newTimes.modtime;
+
+  if (simu::utime(realPath, &newTimes)) {
+    TRACE("f_utime(%s) = error %d (%s)", simpath, errno, strerror(errno));
+    return FR_DENIED;
+  }
+  else {
+    TRACE("f_utime(%s) set mtime = %s", simpath, ctime(&newTimes.modtime));
+    return FR_OK;
+  }
+}
+
 int f_putc (TCHAR c, FIL * fil)
 {
   if (fil && fil->fs) fwrite(&c, 1, 1, (FILE*)fil->fs);
@@ -1006,7 +1046,11 @@ FRESULT f_getcwd (TCHAR *path, UINT sz_path)
   }
 
   // remove simuSdDirectory from the cwd
+#ifdef WIN32
+  strcpy(path, cwd + strlen(simuSdDirectory) + 2);  // account for drive name
+#else
   strcpy(path, cwd + strlen(simuSdDirectory));
+#endif
 
   TRACE("f_getcwd() = %s", path);
   return FR_OK;
