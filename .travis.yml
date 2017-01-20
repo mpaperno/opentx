@@ -38,5 +38,4 @@ install:
   - sudo apt-get install -qq qt${QT_BASE}base qt${QT_BASE}multimedia qt${QT_BASE}tools; source /opt/qt${QT_BASE}/bin/qt${QT_BASE}-env.sh;
 
 script:
-  - export PATH=$PATH:/opt/gcc-arm-none-eabi/bin 
-  - ./tools/commit-tests.sh
+  - export PATH=$PATH:/opt/gcc-arm-none-eabi/bin && ./tools/commit-tests.sh
