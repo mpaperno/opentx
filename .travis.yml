@@ -1,14 +1,14 @@
 sudo: required
 dist: trusty
-# language: python
-language: cpp
+language: python
+# language: cpp
 compiler: gcc
 
 virtualenv:
   system_site_packages: true
 
-# python:
-#   - 3.4
+python:
+  - 3.4
 
 env:
    - QT_BASE=53
@@ -29,8 +29,8 @@ before_install:
   - sudo apt-get update -qq
 
 install:
-  - sudo apt-get --yes --force-yes install python-qt4 curl gcc-arm-none-eabi libmpfr4 libmpc3 libfox-1.6-dev libgtest-dev
   # - sudo apt-get --yes --force-yes install qtbase5-dev qtmultimedia5-dev qttools5-dev qttools5-dev-tools python3-pyqt5 curl gcc-arm-none-eabi libmpfr4 libmpc3 libfox-1.6-dev libgtest-dev
+  - sudo apt-get --yes --force-yes install python3-pyqt5 curl gcc-arm-none-eabi libmpfr4 libmpc3 libfox-1.6-dev libgtest-dev
   - wget --quiet https://launchpad.net/ubuntu/+source/gcc-avr/1:4.9.2+Atmel3.5.0-1/+build/8403710/+files/gcc-avr_4.9.2+Atmel3.5.0-1_amd64.deb
   - wget --quiet https://launchpad.net/ubuntu/+source/avr-libc/1:1.8.0+Atmel3.5.0-1/+build/8435473/+files/avr-libc_1.8.0+Atmel3.5.0-1_all.deb
   - wget --quiet https://launchpad.net/ubuntu/+source/binutils-avr/2.25+Atmel3.5.0-2/+build/8435474/+files/binutils-avr_2.25+Atmel3.5.0-2_amd64.deb
@@ -43,3 +43,10 @@ install:
 
 script:
   - ./tools/commit-tests.sh
+
+# addons:
+#   apt:
+#     sources:
+#       - deadsnakes
+#     packages:
+#       - python3.4
