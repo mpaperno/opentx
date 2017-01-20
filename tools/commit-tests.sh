@@ -117,10 +117,10 @@ if [[ ${FLAVOR} == "AR9X" || ${FLAVOR} == "ARM9X" || ${FLAVOR} == "ALL" ]] ; the
   make -j${CORES} gtests ; ./gtests ${TEST_OPTIONS}
 fi
 
-if [[ ${FLAVOR} == "9XPRO" || ${FLAVOR} == "ARM9X" || ${FLAVOR} == "ALL" ]] ; then
+if [[ ${FLAVOR} == "9XRPRO" || ${FLAVOR} == "ARM9X" || ${FLAVOR} == "ALL" ]] ; then
   # OpenTX on Sky9x
   rm -rf *
-  cmake ${COMMON_OPTIONS} -DPCB=9XPRO -DHELI=YES ${SRCDIR}
+  cmake ${COMMON_OPTIONS} -DPCB=9XRPRO -DHELI=YES ${SRCDIR}
   make -j${CORES} ${FIRMARE_TARGET}
   make -j${CORES} simu
   make -j${CORES} gtests ; ./gtests ${TEST_OPTIONS}

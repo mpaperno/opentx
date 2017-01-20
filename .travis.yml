@@ -26,7 +26,7 @@ env:
      - FLAVOR=ARM9X
      # - FLAVOR=AR9X
      # - FLAVOR=SKY9X
-     # - FLAVOR=9XPRO
+     # - FLAVOR=9XRPRO
      # - FLAVOR=TARANIS
      - FLAVOR=X7
      - FLAVOR=X9
