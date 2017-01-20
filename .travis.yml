@@ -11,10 +11,10 @@ python:
   - 3.4
 
 env:
-   - QT_BASE=53
-   - QT_BASE=54
-   - QT_BASE=55
-   - QT_BASE=56
+   # - QT_BASE=53
+   # - QT_BASE=54
+   # - QT_BASE=55
+   # - QT_BASE=56
    - QT_BASE=57
 
 before_install:
@@ -29,24 +29,12 @@ before_install:
   - sudo apt-get update -qq
 
 install:
-  # - sudo apt-get --yes --force-yes install qtbase5-dev qtmultimedia5-dev qttools5-dev qttools5-dev-tools python3-pyqt5 curl gcc-arm-none-eabi libmpfr4 libmpc3 libfox-1.6-dev libgtest-dev
   - sudo apt-get --yes --force-yes install python3-pyqt5 curl gcc-arm-none-eabi libmpfr4 libmpc3 libfox-1.6-dev libgtest-dev
   - wget --quiet https://launchpad.net/ubuntu/+source/gcc-avr/1:4.9.2+Atmel3.5.0-1/+build/8403710/+files/gcc-avr_4.9.2+Atmel3.5.0-1_amd64.deb
   - wget --quiet https://launchpad.net/ubuntu/+source/avr-libc/1:1.8.0+Atmel3.5.0-1/+build/8435473/+files/avr-libc_1.8.0+Atmel3.5.0-1_all.deb
   - wget --quiet https://launchpad.net/ubuntu/+source/binutils-avr/2.25+Atmel3.5.0-2/+build/8435474/+files/binutils-avr_2.25+Atmel3.5.0-2_amd64.deb
   - sudo dpkg --install gcc-avr_4.9.2+Atmel3.5.0-1_amd64.deb avr-libc_1.8.0+Atmel3.5.0-1_all.deb binutils-avr_2.25+Atmel3.5.0-2_amd64.deb
-  - if [ "$QT_BASE" = "53" ]; then sudo apt-get install -qq qt53base qt53multimedia qt53tools; source /opt/qt53/bin/qt53-env.sh; fi
-  - if [ "$QT_BASE" = "54" ]; then sudo apt-get install -qq qt54base qt54multimedia qt54tools; source /opt/qt54/bin/qt54-env.sh; fi
-  - if [ "$QT_BASE" = "55" ]; then sudo apt-get install -qq qt55base qt55multimedia qt55tools; source /opt/qt55/bin/qt55-env.sh; fi
-  - if [ "$QT_BASE" = "56" ]; then sudo apt-get install -qq qt56base qt56multimedia qt56tools; source /opt/qt56/bin/qt56-env.sh; fi
-  - if [ "$QT_BASE" = "57" ]; then sudo apt-get install -qq qt57base qt57multimedia qt57tools; source /opt/qt57/bin/qt57-env.sh; fi
+  - sudo apt-get install -qq qt${QT_BASE}base qt${QT_BASE}multimedia qt${QT_BASE}tools; source /opt/qt${QT_BASE}/bin/qt${QT_BASE}-env.sh;
 
 script:
   - ./tools/commit-tests.sh
-
-# addons:
-#   apt:
-#     sources:
-#       - deadsnakes
-#     packages:
-#       - python3.4

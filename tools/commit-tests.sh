@@ -31,7 +31,7 @@ if [ "$(uname)" = "Darwin" ]; then
 else
     SCRIPT=$(readlink -f "$0")
 fi
-#-DCMAKE_PREFIX_PATH=/opt/qt55 
+#export CMAKE_PREFIX_PATH=/opt/qt${QT_BASE}
 SRCDIR=$(dirname "$SCRIPT")/..
 COMMON_OPTIONS="-DCMAKE_BUILD_TYPE=Debug -DTRACE_SIMPGMSPACE=NO -DVERBOSE_CMAKELISTS=YES -DCMAKE_RULE_MESSAGES=OFF -Wno-dev"
 if (( $WERROR )); then COMMON_OPTIONS+=" -DWARNINGS_AS_ERRORS=YES"; fi
