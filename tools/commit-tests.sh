@@ -55,7 +55,7 @@ if (( $WERROR )); then COMMON_OPTIONS+=" -DWARNINGS_AS_ERRORS=YES"; fi
 mkdir build || true
 cd build
 
-if [[ ${FLAVOR} == "9X" || ${FLAVOR} == "ALL" ]] ; then
+if [[ ${FLAVOR} == "9X" || ${FLAVOR} == "AVR9X" || ${FLAVOR} == "ALL" ]] ; then
   # OpenTX on 9X stock with FrSky telemetry
   rm -rf *
   cmake ${COMMON_OPTIONS} -DPCB=9X -DHELI=YES -DTEMPLATES=YES -DTELEMETRY=FRSKY ${SRCDIR}
@@ -74,7 +74,7 @@ if [[ ${FLAVOR} == "9X" || ${FLAVOR} == "ALL" ]] ; then
   make -j${CORES} ${FIRMARE_TARGET}
 fi
 
-if [[ ${FLAVOR} == "MEGA2560" || ${FLAVOR} == "ALL" ]] ; then
+if [[ ${FLAVOR} == "MEGA2560" || ${FLAVOR} == "AVR9X" || ${FLAVOR} == "ALL" ]] ; then
   # OpenTX on Mega2560
   rm -rf *
   cmake ${COMMON_OPTIONS} -DPCB=MEGA2560 -DTEMPLATES=YES -DHELI=YES ${SRCDIR}
@@ -90,7 +90,7 @@ if [[ ${FLAVOR} == "MEGA2560" || ${FLAVOR} == "ALL" ]] ; then
   make -j${CORES} gtests ; ./gtests ${TEST_OPTIONS}
 fi
 
-if [[ ${FLAVOR} == "GRUVIN9X" || ${FLAVOR} == "n9X" || ${FLAVOR} == "ALL" ]] ; then
+if [[ ${FLAVOR} == "GRUVIN9X" || ${FLAVOR} == "AVR9X" || ${FLAVOR} == "ALL" ]] ; then
   # OpenTX on gruvin9x board
   rm -rf *
   cmake ${COMMON_OPTIONS} -DPCB=GRUVIN9X -DHELI=YES -DTEMPLATES=YES -DAUDIO=YES -DVOICE=YES ${SRCDIR}
@@ -99,7 +99,7 @@ if [[ ${FLAVOR} == "GRUVIN9X" || ${FLAVOR} == "n9X" || ${FLAVOR} == "ALL" ]] ; t
   make -j${CORES} gtests ; ./gtests ${TEST_OPTIONS}
 fi
 
-if [[ ${FLAVOR} == "SKY9X" || ${FLAVOR} == "n9X" || ${FLAVOR} == "ALL" ]] ; then
+if [[ ${FLAVOR} == "SKY9X" || ${FLAVOR} == "ARM9X" || ${FLAVOR} == "ALL" ]] ; then
   # OpenTX on Sky9x
   rm -rf *
   cmake ${COMMON_OPTIONS} -DPCB=SKY9X -DHELI=YES ${SRCDIR}
@@ -108,10 +108,19 @@ if [[ ${FLAVOR} == "SKY9X" || ${FLAVOR} == "n9X" || ${FLAVOR} == "ALL" ]] ; then
   make -j${CORES} gtests ; ./gtests ${TEST_OPTIONS}
 fi
 
-if [[ ${FLAVOR} == "AR9X" || ${FLAVOR} == "n9X" || ${FLAVOR} == "ALL" ]] ; then
+if [[ ${FLAVOR} == "AR9X" || ${FLAVOR} == "ARM9X" || ${FLAVOR} == "ALL" ]] ; then
   # OpenTX on AR9X
   rm -rf *
   cmake ${COMMON_OPTIONS} -DPCB=AR9X -DHELI=YES ${SRCDIR}
+  make -j${CORES} ${FIRMARE_TARGET}
+  make -j${CORES} simu
+  make -j${CORES} gtests ; ./gtests ${TEST_OPTIONS}
+fi
+
+if [[ ${FLAVOR} == "9XPRO" || ${FLAVOR} == "ARM9X" || ${FLAVOR} == "ALL" ]] ; then
+  # OpenTX on Sky9x
+  rm -rf *
+  cmake ${COMMON_OPTIONS} -DPCB=9XPRO -DHELI=YES ${SRCDIR}
   make -j${CORES} ${FIRMARE_TARGET}
   make -j${CORES} simu
   make -j${CORES} gtests ; ./gtests ${TEST_OPTIONS}
