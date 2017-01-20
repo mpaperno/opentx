@@ -1,45 +1,21 @@
-# sudo: required
-# dist: trusty
-language: python
+sudo: required
+dist: trusty
+# language: python
+language: cpp
+compiler: gcc
 
 virtualenv:
   system_site_packages: true
 
-python:
-  - 3.4
+# python:
+#   - 3.4
 
-matrix:
- include:
-  - os: linux
-    dist: trusty
-    sudo: required
-    compiler: gcc
-    env:
-     - QT_BASE=53
-  - os: linux
-    dist: trusty
-    sudo: required
-    compiler: gcc
-    env:
-     - QT_BASE=54
-  - os: linux
-    dist: trusty
-    sudo: required
-    compiler: gcc
-    env:
-     - QT_BASE=55
-  - os: linux
-    dist: trusty
-    sudo: required
-    compiler: gcc
-    env:
-     - QT_BASE=56
-  - os: linux
-    dist: trusty
-    sudo: required
-    compiler: gcc
-    env:
-     - QT_BASE=57
+env:
+   - QT_BASE=53
+   - QT_BASE=54
+   - QT_BASE=55
+   - QT_BASE=56
+   - QT_BASE=57
 
 before_install:
   - sudo add-apt-repository ppa:ubuntu-sdk-team/ppa --yes
@@ -53,7 +29,7 @@ before_install:
   - sudo apt-get update -qq
 
 install:
-  - sudo apt-get --yes --force-yes install python3-pyqt5 curl gcc-arm-none-eabi libmpfr4 libmpc3 libfox-1.6-dev libgtest-dev
+  - sudo apt-get --yes --force-yes install python3 python3-pyqt5 curl gcc-arm-none-eabi libmpfr4 libmpc3 libfox-1.6-dev libgtest-dev
   # - sudo apt-get --yes --force-yes install qtbase5-dev qtmultimedia5-dev qttools5-dev qttools5-dev-tools python3-pyqt5 curl gcc-arm-none-eabi libmpfr4 libmpc3 libfox-1.6-dev libgtest-dev
   - wget --quiet https://launchpad.net/ubuntu/+source/gcc-avr/1:4.9.2+Atmel3.5.0-1/+build/8403710/+files/gcc-avr_4.9.2+Atmel3.5.0-1_amd64.deb
   - wget --quiet https://launchpad.net/ubuntu/+source/avr-libc/1:1.8.0+Atmel3.5.0-1/+build/8435473/+files/avr-libc_1.8.0+Atmel3.5.0-1_all.deb
