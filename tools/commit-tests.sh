@@ -127,12 +127,12 @@ cd build
 # make -j${CORES} simu
 # make -j${CORES} gtests ; ./gtests --gtest_shuffle --gtest_repeat=5 --gtest_break_on_failure
 
-# # OpenTX on Horus
-# rm -rf *
-# cmake ${COMMON_OPTIONS} -DPCB=HORUS -DHELI=YES -DLUA=YES -DGVARS=YES ${SRCDIR}
-# make -j${CORES} ${FIRMARE_TARGET}
-# make -j${CORES} simu
-# make -j${CORES} gtests ; ./gtests --gtest_shuffle --gtest_repeat=5 --gtest_break_on_failure
+# OpenTX on Horus
+rm -rf *
+cmake ${COMMON_OPTIONS} -DPCB=HORUS -DHELI=YES -DLUA=YES -DGVARS=YES ${SRCDIR}
+make -j${CORES} ${FIRMARE_TARGET}
+make -j${CORES} simu
+make -j${CORES} gtests ; ./gtests --gtest_shuffle --gtest_repeat=5 --gtest_break_on_failure
 
 # Companion
 rm -rf *
